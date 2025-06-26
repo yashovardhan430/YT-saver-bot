@@ -3,10 +3,18 @@ import time
 import json
 import asyncio
 import yt_dlp
-from telegram import Update, InputFile, Message
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram import Update, InputFile
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
 
-BOT_TOKEN = "7914729347:AAHdw9k35eanDTQ1IFZH3wM7qWwXqk7sqFs"  # Replace with your real token
+# Environment token and port (Railway)
+BOT_TOKEN = os.getenv("7914729347:AAHdw9k35eanDTQ1IFZH3wM7qWwXqk7sqFs")
+PORT = int(os.environ.get("PORT", 8000))
 MAX_FILE_SIZE = 120 * 1024 * 1024  # 120 MB
 AUTO_DELETE = True
 HISTORY_FILE = "user_history.json"
@@ -34,7 +42,6 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     user_id = update.message.from_user.id
 
-    # Step 1: Show video info
     info_msg = await update.message.reply_text("🔍 Fetching video info...")
 
     try:
@@ -120,10 +127,23 @@ async def download_and_send(update: Update, url, user_id, progress_msg):
         await progress_msg.edit_text(f"❌ Error: {str(e)}")
         await update.message.reply_text("🔁 Please send another video link.")
 
-# Run the bot
-app = ApplicationBuilder().token(BOT_TOKEN).read_timeout(180).write_timeout(180).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_url))
+# --- Start bot with webhook ---
+async def start_webhook():
+    app = Application.builder().token(BOT_TOKEN).build()
 
-print("🚀 Bot is running...")
-app.run_polling()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_url))
+
+    # Delete previous webhook (avoid duplicate polling)
+    await app.bot.delete_webhook(drop_pending_updates=True)
+
+    # Run the webhook
+    await app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=BOT_TOKEN,
+        webhook_url=f"https://{os.getenv('RAILWAY_DOMAIN')}/{BOT_TOKEN}"
+    )
+
+if __name__ == '__main__':
+    asyncio.run(start_webhook())
